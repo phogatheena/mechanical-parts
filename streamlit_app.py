@@ -27,24 +27,26 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 @st.cache_resource
 def load_model():
     try:
-        model = models.resnet50(weights=None)  # Updated to avoid deprecated 'pretrained'
+        model = models.resnet50(weights=None)  # Avoid deprecated 'pretrained'
         num_features = model.fc.in_features
-        num_classes = 4  # Adjust to match your dataset
+        num_classes = 4  # Adjust for your dataset
         model.fc = nn.Linear(num_features, num_classes)
         
-        # Ensure the model file exists before loading
         model_path = "resnet50_gradcam_model.pth"
         if not os.path.exists(model_path):
-            st.error(f"Model file '{model_path}' not found. Please upload or check the path.")
+            st.error(f"Model file '{model_path}' not found. Please check the path.")
             return None
 
-        model.load_state_dict(torch.load(model_path, map_location=device))
+        # Load model with weights_only=False to allow full checkpoint loading
+        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=False))
+
         model.to(device)
         model.eval()
         return model
     except Exception as e:
         st.error(f"Error loading model: {e}")
         return None
+
 
 model = load_model()
 
