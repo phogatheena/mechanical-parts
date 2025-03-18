@@ -17,6 +17,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+import os
+print("File Exists:", os.path.exists("resnet50_gradcam_model.pth"))
+print("File Size:", os.path.getsize("resnet50_gradcam_model.pth") if os.path.exists("resnet50_gradcam_model.pth") else "File not found")
+
 # ----------------------------
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
