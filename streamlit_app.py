@@ -17,7 +17,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
 # ----------------------------
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -26,27 +25,14 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Load the model (cached to avoid reloading on every interaction)
 @st.cache_resource
 def load_model():
-    try:
-        model = models.resnet50(weights=None)  # Avoid deprecated 'pretrained'
-        num_features = model.fc.in_features
-        num_classes = 4  # Adjust for your dataset
-        model.fc = nn.Linear(num_features, num_classes)
-        
-        model_path = "resnet50_gradcam_model.pth"
-        if not os.path.exists(model_path):
-            st.error(f"Model file '{model_path}' not found. Please check the path.")
-            return None
-
-        # Load model with weights_only=False to allow full checkpoint loading
-        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=False))
-
-        model.to(device)
-        model.eval()
-        return model
-    except Exception as e:
-        st.error(f"Error loading model: {e}")
-        return None
-
+    model = models.resnet50(pretrained=False)
+    num_features = model.fc.in_features
+    num_classes = 4  # Adjust to match your dataset
+    model.fc = nn.Linear(num_features, num_classes)
+    model.load_state_dict(torch.load("resnet50_gradcam_model.pth", map_location=device))
+    model.to(device)
+    model.eval()
+    return model
 
 model = load_model()
 
@@ -107,26 +93,26 @@ class GradCAM:
         grad_cam_map = (grad_cam_map - grad_cam_map.min()) / (grad_cam_map.max() - grad_cam_map.min() + 1e-8)
         return grad_cam_map
 
-# Ensure model exists before setting Grad-CAM
-if model:
-    target_layer = model.layer4[-1]  # Ensure correct target layer for ResNet50
-    grad_cam = GradCAM(model, target_layer)
+# Target layer for ResNet50
+target_layer = model.layer4[-1]
+grad_cam = GradCAM(model, target_layer)
 
-# ----------------------------
-# Streamlit UI
+
+
 st.title("🔧 Mechanical Components Classification Demo")
 st.markdown("""
-Welcome to the **Mechanical Components Classification Demo**. This interactive app uses a deep learning model to classify mechanical components and visualize decisions using Grad-CAM.
+Welcome to the **Mechanical Components Classification Demo**. This interactive app uses a deep learning model to automatically classify mechanical engine components and visualize the model's decision process with Grad‑CAM.
 
-### **How to Use:**
-1. **Upload** an image or **choose a sample**.
-2. The model predicts the component and generates a **heatmap** overlay.
+**How to Use the App:**
+- **Upload:** Choose your own image file.
+- **Sample:** Select from our collection of sample images.
+- The model will predict the component type and display a Grad‑CAM heatmap overlay highlighting the regions influencing the prediction.
 ---
 """)
 
 # ----------------------------
-# Image selection
-option = st.radio("Select image source:", ("Upload", "Sample"), index=1)
+# Image source selection
+option = st.radio("Select image source:", ("Upload", "Sample"),index=1)
 
 if option == "Upload":
     uploaded_file = st.file_uploader("Upload an image (PNG, JPG, JPEG)", type=["png", "jpg", "jpeg"])
@@ -134,7 +120,7 @@ if option == "Upload":
         image = Image.open(uploaded_file).convert("RGB")
         st.image(image, caption="Uploaded Image", width=300)
 elif option == "Sample":
-    sample_dir = "sample_dir"
+    sample_dir = "sample_dir"  # Adjust folder name as needed
     try:
         sample_files = [f for f in os.listdir(sample_dir) if f.lower().endswith((".png", ".jpg", ".jpeg"))]
     except FileNotFoundError:
@@ -157,15 +143,15 @@ elif option == "Sample":
         image = Image.open(os.path.join(sample_dir, selected_sample)).convert("RGB")
         st.image(image, caption=f"Selected Image: {selected_sample}", use_container_width=False)
     else:
-        st.write("No sample images found.")
+        st.write("No sample images found in the sample folder.")
 
 # ----------------------------
-# If an image is available, process it
-if 'image' in locals() and model:
+# If an image is available, do Grad-CAM
+if 'image' in locals():
     st.markdown("---")
     st.success("### Model Prediction & Grad‑CAM Visualization")
 
-    # Preprocess image
+    # Preprocess
     input_img = transform(image)
     input_tensor = input_img.unsqueeze(0).to(device)
 
@@ -175,24 +161,26 @@ if 'image' in locals() and model:
     pred_class = class_names[pred_idx]
     st.success(f"### **Predicted Class:** {pred_class}")
 
-    # Grad-CAM Heatmap
+
     st.markdown("### Heatmap:")
+    # Grad-CAM
     heatmap = grad_cam(input_tensor, class_idx=pred_idx)
 
-    # Matplotlib visualization
+    # Create Matplotlib figure
     fig, ax = plt.subplots(figsize=(4, 4))
-    img_np = np.array(image.resize((224, 224)))  
+    img_np = np.array(image.resize((224, 224)))  # Show at 224×224
     ax.imshow(img_np)
     ax.imshow(heatmap, cmap='jet', alpha=0.5, extent=(0, 224, 224, 0))
     ax.axis('off')
 
-    # Convert figure to HTML image
+    # Convert figure to HTML image with custom CSS
+    import io, base64
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
     buf.seek(0)
     img_base64 = base64.b64encode(buf.read()).decode()
 
-    # Custom CSS for styling
+    # Add your custom CSS for sizing
     st.markdown(
         """
         <style>
@@ -208,8 +196,11 @@ if 'image' in locals() and model:
         unsafe_allow_html=True
     )
 
-    # Embed the heatmap
-    st.markdown(f"<img src='data:image/png;base64,{img_base64}' class='small-plot'/>", unsafe_allow_html=True)
+    # Embed the base64 image with the custom class
+    st.markdown(
+        f"<img src='data:image/png;base64,{img_base64}' class='small-plot'/>",
+        unsafe_allow_html=True
+    )
 
     # Cleanup
     plt.close(fig)
